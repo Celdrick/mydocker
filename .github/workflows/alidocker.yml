@@ -1,0 +1,132 @@
+name: Docker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Pull
+    runs-on: ubuntu-latest
+    steps:
+    - name: Before freeing up disk space
+      run: |
+        echo "Before freeing up disk space"
+        echo "=============================================================================="
+        df -hT
+        echo "=============================================================================="
+
+    - name: Maximize build space
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 2048
+        swap-size-mb: 128
+        remove-dotnet: 'true'
+        remove-haskell: 'true'
+        build-mount-path: '/var/lib/docker/'
+
+    - name: Restart Docker
+      run: sudo service docker restart
+
+    - name: Free up disk space complete
+      run: |
+        echo "Free up disk space complete"
+        echo "=============================================================================="
+        df -hT
+        echo "=============================================================================="
+
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # - name: Docker Setup Buildx
+    #   uses: docker/setup-buildx-action@v3
+
+    - name: Set up MySQL client
+      run: |
+        sudo apt-get install -y mysql-client
+
+    - name: Configure Docker for Insecure Registry
+      run: |
+        echo "{\"insecure-registries\": [\"${{ secrets.MY_REGISTRY }}\"],\"experimental\": true}" | sudo tee /etc/docker/daemon.json
+        sudo systemctl daemon-reload
+        sudo systemctl restart docker
+
+    # - name: Create database and tables
+    #   run: |
+    #     mysql -h ${{ secrets.MYSQL_HOST }} -P ${{ secrets.MYSQL_PORT }} -u ${{ secrets.MYSQL_USER }} -p${{ secrets.MYSQL_PASSWORD }} -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.MYSQL_DB }};"
+    #     mysql -h ${{ secrets.MYSQL_HOST }} -P ${{ secrets.MYSQL_PORT }} -u ${{ secrets.MYSQL_USER }} -p${{ secrets.MYSQL_PASSWORD }} -D ${{ secrets.MYSQL_DB }} -e "CREATE TABLE IF NOT EXISTS images_for_push (id INT AUTO_INCREMENT PRIMARY KEY, source_registry_url VARCHAR(255) DEFAULT 'docker.io', orig_name_space VARCHAR(255), orig_image_name VARCHAR(255), add_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, platform VARCHAR(20) DEFAULT 'linux/amd64', push_status TINYINT DEFAULT 0);"
+    #     mysql -h ${{ secrets.MYSQL_HOST }} -P ${{ secrets.MYSQL_PORT }} -u ${{ secrets.MYSQL_USER }} -p${{ secrets.MYSQL_PASSWORD }} -D ${{ secrets.MYSQL_DB }} -e "CREATE TABLE IF NOT EXISTS pushed_images (id INT AUTO_INCREMENT PRIMARY KEY, source_registry_url VARCHAR(255) DEFAULT 'docker.io', target_registry_url VARCHAR(255), orig_name_space VARCHAR(255), orig_image_name VARCHAR(255), targ_name_space VARCHAR(255), push_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, registry_image_name VARCHAR(255), push_status TINYINT DEFAULT 0, image_size BIGINT, digest VARCHAR(255), platform VARCHAR(20) DEFAULT 'linux/amd64');"
+
+    - name: Login to Aliyun Registry
+      run: |
+        echo ${{ secrets.ALIYUN_REGISTRY_PASSWORD }} | docker login ${{ secrets.ALIYUN_REGISTRY }} -u ${{ secrets.ALIYUN_REGISTRY_USER }} --password-stdin
+
+    - name: Login to Private Registry
+      run: |
+        echo ${{ secrets.MY_REGISTRY_PASSWORD }} | docker login ${{ secrets.MY_REGISTRY }} -u ${{ secrets.MY_REGISTRY_USER }} --password-stdin
+
+    - name: Process Images
+      env:
+        MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+        MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+        MYSQL_USER: ${{ secrets.MYSQL_USER }}
+        MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        MYSQL_DB: ${{ secrets.MYSQL_DB }}
+        ALIYUN_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+        ALIYUN_NAME_SPACE: ${{ secrets.ALIYUN_NAME_SPACE }}
+        MY_REGISTRY: ${{ secrets.MY_REGISTRY }}
+      run: |
+        #!/bin/bash
+        set -xv
+
+        process_image() {
+            local source_registry_url="$1"
+            local orig_name_space="$2"
+            local orig_image_name="$3"
+            local target_registry_url="$4"
+            local target_name_space="$5"
+            local platform="$6"
+
+            IFS=':' read -r orig_image tag <<< "$orig_image_name"
+            target_image="$target_registry_url/$target_name_space/$orig_image:$tag"
+
+            # Check if already pushed
+            count=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -D "$MYSQL_DB" -N -e "SELECT COUNT(*) FROM pushed_images WHERE push_status=1 AND orig_image_name='$orig_image_name' AND target_registry_url='$target_registry_url' AND targ_name_space='$target_name_space'")
+            if [ "$count" -eq 0 ]; then
+                echo "Processing $orig_image_name for $target_registry_url..."
+
+                # Pull source image for multi-arch
+                docker pull --platform "$platform" "$source_registry_url/$orig_name_space/$orig_image:$tag"
+
+                # Tag image
+                docker tag "$source_registry_url/$orig_name_space/$orig_image:$tag" "$target_image"
+
+                # Push image
+                docker push "$target_image"
+
+                # Get image info
+                size=$(docker inspect --format='{{.Size}}' "$target_image")
+                digest=$(docker image inspect --format='{{index .RepoDigests 0}}' "$target_image")
+
+                # Record to DB
+                mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -D "$MYSQL_DB" -e "INSERT INTO pushed_images (source_registry_url, target_registry_url, orig_name_space, orig_image_name, targ_name_space, push_time, registry_image_name, push_status, image_size, digest, platform) VALUES ('$source_registry_url', '$target_registry_url', '$orig_name_space', '$orig_image_name', '$target_name_space', NOW(), '$target_image', 1, $size, '$digest', '$platform')"
+            else
+                echo "Already pushed to $target_registry_url: $orig_image_name"
+            fi
+        }
+
+        # Fetch pending images
+        mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -D "$MYSQL_DB" -N -e "SELECT source_registry_url, orig_name_space, orig_image_name, platform FROM images_for_push WHERE push_status = 0" | while read -r source_registry_url orig_name_space orig_image_name platform; do
+            # Process for Aliyun
+            process_image "$source_registry_url" "$orig_name_space" "$orig_image_name" "$ALIYUN_REGISTRY" "$ALIYUN_NAME_SPACE" "$platform"
+
+            # Process for Private Registry
+            process_image "$source_registry_url" "$orig_name_space" "$orig_image_name" "$MY_REGISTRY" "$orig_name_space" "$platform"
+        done
+
+    - name: Cleanup
+      run: |
+        docker system prune -af
+        docker buildx stop mybuilder
+        docker buildx rm mybuilder
