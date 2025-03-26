@@ -98,8 +98,8 @@ def get_image_info(image_name):
         # 获取镜像大小
         size_cmd = f"docker image inspect {image_name} --format='{{{{.Size}}}}'"
         size_output = subprocess.check_output(size_cmd, shell=True).decode('utf-8').strip()
+        # 转换为浮点数，单位为MB
         size_mb = float(size_output) / (1024 * 1024)
-        image_size = f"{size_mb:.2f}MB"
         
         # 获取镜像摘要
         digest_cmd = f"docker image inspect {image_name} --format='{{{{.RepoDigests}}}}'"
@@ -108,28 +108,10 @@ def get_image_info(image_name):
         digest_match = re.search(r'sha256:[a-f0-9]+', digest_output)
         digest = digest_match.group(0) if digest_match else ""
         
-        return image_size, digest
+        return size_mb, digest
     except subprocess.CalledProcessError as e:
         print(f"获取镜像信息错误: {e}")
-        return "未知", "未知"
-
-def update_push_status(image_id):
-    """更新images_for_push表中的推送状态"""
-    connection = get_db_connection()
-    cursor = connection.cursor()
-    
-    try:
-        cursor.execute("""
-        UPDATE images_for_push SET push_status = 1
-        WHERE id = %s
-        """, (image_id,))
-        connection.commit()
-    except Error as e:
-        print(f"更新推送状态错误: {e}")
-    finally:
-        if connection.is_connected():
-            cursor.close()
-            connection.close()
+        return 0.0, "未知"
 
 def record_pushed_image(source_registry_url, target_registry_url, orig_name_space, 
                         orig_image_name, targ_name_space, registry_image_name, 
@@ -151,6 +133,24 @@ def record_pushed_image(source_registry_url, target_registry_url, orig_name_spac
         connection.commit()
     except Error as e:
         print(f"记录已推送镜像错误: {e}")
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
+def update_push_status(image_id):
+    """更新images_for_push表中的推送状态"""
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    
+    try:
+        cursor.execute("""
+        UPDATE images_for_push SET push_status = 1
+        WHERE id = %s
+        """, (image_id,))
+        connection.commit()
+    except Error as e:
+        print(f"更新推送状态错误: {e}")
     finally:
         if connection.is_connected():
             cursor.close()
@@ -189,7 +189,6 @@ def pull_and_push_image(image, target):
     # 检查镜像是否已推送
     if is_image_pushed(orig_image_name, target_registry_url):
         print(f"镜像 {orig_image_name} 已经推送到 {target_registry_url}，跳过")
-        update_push_status(image['id'])
         return
     
     try:
@@ -219,7 +218,7 @@ def pull_and_push_image(image, target):
         print(f"推送镜像: {push_cmd}")
         subprocess.run(push_cmd, shell=True, check=True)
         
-        # 获取镜像信息
+        # 获取镜像信息 - 这里image_size现在是浮点数
         image_size, digest = get_image_info(registry_image_name)
         
         # 记录已推送的镜像
@@ -229,10 +228,9 @@ def pull_and_push_image(image, target):
             image_size, digest, platform
         )
         
-        # 更新推送状态
-        update_push_status(image['id'])
+        # 移除对 update_push_status 的调用
         
-        print(f"镜像 {source_image} 成功推送到 {registry_image_name}")
+        print(f"镜像 {source_image} 成功推送到 {registry_image_name}，大小: {image_size:.2f}MB")
         
         # 清理本地镜像
         subprocess.run(f"docker rmi {source_image} {registry_image_name}", shell=True)
