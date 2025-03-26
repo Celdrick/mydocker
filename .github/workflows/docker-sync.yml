@@ -9,11 +9,21 @@ on:
     types: [sync-images]
 
 jobs:
-  sync-to-aliyun:
+  sync-images:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mysql-connector-python
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -31,15 +41,6 @@ jobs:
           ALIYUN_REGISTRY_PASSWORD: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
         run: |
           python scripts/sync_images.py --target aliyun
-
-  sync-to-private:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
 
       - name: Configure Docker for insecure registry
         run: |
