@@ -38,7 +38,7 @@ def init_database():
             CREATE TABLE IF NOT EXISTS images_for_push (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 source_registry_url VARCHAR(255) DEFAULT 'docker.io',
-                orig_name_space VARCHAR(255),
+                orig_name_space VARCHAR(255) DEFAULT 'library',
                 orig_image_name VARCHAR(255),
                 add_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 platform VARCHAR(50) DEFAULT 'linux/amd64',
