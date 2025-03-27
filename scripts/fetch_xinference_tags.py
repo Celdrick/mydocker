@@ -91,7 +91,7 @@ def insert_image_to_db(registry_url, namespace, image_name, platform="linux/amd6
                 return True
             else:
                 print(f"镜像已存在且未推送: {registry_url}/{namespace}/{image_name}")
-                return False
+                return True
         else:
             # 插入新镜像
             cursor.execute("""
