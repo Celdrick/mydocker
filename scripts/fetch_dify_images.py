@@ -122,14 +122,38 @@ def insert_image_to_db(registry_url, namespace, image_name, platform="linux/amd6
     cursor = connection.cursor()
     
     try:
-        # 检查是否已存在相同的镜像
+        # 首先检查pushed_images表中是否已存在相同的镜像（忽略push_status值）
         cursor.execute("""
-        SELECT COUNT(*) FROM images_for_push 
+        SELECT COUNT(*) FROM pushed_images 
         WHERE source_registry_url = %s AND orig_name_space = %s AND orig_image_name = %s
         """, (registry_url, namespace, image_name))
         
-        count = cursor.fetchone()[0]
-        if count == 0:
+        count_pushed = cursor.fetchone()[0]
+        if count_pushed > 0:
+            print(f"镜像已在pushed_images表中存在: {registry_url}/{namespace}/{image_name}，跳过")
+            return False
+        
+        # 检查images_for_push表中是否已存在相同的镜像
+        cursor.execute("""
+        SELECT id, push_status FROM images_for_push 
+        WHERE source_registry_url = %s AND orig_name_space = %s AND orig_image_name = %s
+        """, (registry_url, namespace, image_name))
+        
+        result = cursor.fetchone()
+        if result:
+            image_id, push_status = result
+            if push_status == 1:  # 如果状态为已推送，重置为未推送
+                cursor.execute("""
+                UPDATE images_for_push SET push_status = 0
+                WHERE id = %s
+                """, (image_id,))
+                connection.commit()
+                print(f"已重置镜像状态: {registry_url}/{namespace}/{image_name}")
+                return True
+            else:
+                print(f"镜像已存在且未推送: {registry_url}/{namespace}/{image_name}")
+                return False
+        else:
             # 插入新镜像
             cursor.execute("""
             INSERT INTO images_for_push 
@@ -139,9 +163,6 @@ def insert_image_to_db(registry_url, namespace, image_name, platform="linux/amd6
             connection.commit()
             print(f"已添加新镜像: {registry_url}/{namespace}/{image_name}")
             return True
-        else:
-            print(f"镜像已存在: {registry_url}/{namespace}/{image_name}")
-            return False
     except Error as e:
         print(f"数据库操作错误: {e}")
         return False
