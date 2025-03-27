@@ -48,15 +48,15 @@ jobs:
           }' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
 
-      - name: Pull and Push to Private Registry
-        env:
-          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
-          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
-          MYSQL_DB: ${{ secrets.MYSQL_DB }}
-          MYSQL_USER: ${{ secrets.MYSQL_USER }}
-          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-          MY_REGISTRY: ${{ secrets.MY_REGISTRY }}
-          MY_REGISTRY_USER: ${{ secrets.MY_REGISTRY_USER }}
-          MY_REGISTRY_PASSWORD: ${{ secrets.MY_REGISTRY_PASSWORD }}
-        run: |
-          python scripts/sync_images.py --target private
+      # - name: Pull and Push to Private Registry
+      #   env:
+      #     MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+      #     MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+      #     MYSQL_DB: ${{ secrets.MYSQL_DB }}
+      #     MYSQL_USER: ${{ secrets.MYSQL_USER }}
+      #     MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      #     MY_REGISTRY: ${{ secrets.MY_REGISTRY }}
+      #     MY_REGISTRY_USER: ${{ secrets.MY_REGISTRY_USER }}
+      #     MY_REGISTRY_PASSWORD: ${{ secrets.MY_REGISTRY_PASSWORD }}
+      #   run: |
+      #     python scripts/sync_images.py --target private
