@@ -38,6 +38,6 @@ jobs:
         if: steps.fetch-tags.outputs.has_new_images == 'true'
         uses: peter-evans/repository-dispatch@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GIT_TOKEN }}
           event-type: sync-images
           client-payload: '{"message": "New Dify images detected"}'
