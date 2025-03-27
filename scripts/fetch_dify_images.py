@@ -96,7 +96,8 @@ def parse_image_info(image):
     if '/' in image:
         namespace, name_tag = image.split('/', 1)
     else:
-        namespace = ""
+        # 对于没有命名空间的镜像，如果是docker.io，则默认命名空间为library
+        namespace = "library" if registry_url == "docker.io" else ""
         name_tag = image
     
     return registry_url, namespace, name_tag
