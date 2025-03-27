@@ -1,0 +1,41 @@
+name: Webhook Image Sync
+
+on:
+  repository_dispatch:
+    types: [add-image]
+
+jobs:
+  add-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mysql-connector-python
+
+      - name: Add image to database
+        id: add-image
+        run: |
+          python scripts/add_webhook_image.py "${{ github.event.client_payload.image }}"
+        env:
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_DB: ${{ secrets.MYSQL_DB }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+
+      - name: Trigger Docker Image Sync workflow
+        if: steps.add-image.outputs.has_new_images == 'true'
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: sync-images
+          client-payload: '{"message": "New image added via webhook"}'
