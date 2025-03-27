@@ -124,11 +124,11 @@ def record_pushed_image(source_registry_url, target_registry_url, orig_name_spac
         cursor.execute("""
         INSERT INTO pushed_images 
         (source_registry_url, target_registry_url, orig_name_space, orig_image_name, 
-         targ_name_space, registry_image_name, push_status, image_size, digest, platform)
-        VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s)
+         targ_name_space, registry_image_name, push_status, image_size, image_size_unit, digest, platform)
+        VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s, %s)
         """, (
             source_registry_url, target_registry_url, orig_name_space, orig_image_name,
-            targ_name_space, registry_image_name, image_size, digest, platform
+            targ_name_space, registry_image_name, image_size, 'MB', digest, platform
         ))
         connection.commit()
     except Error as e:
@@ -156,6 +156,34 @@ def update_push_status(image_id):
             cursor.close()
             connection.close()
 
+def get_available_disk_space(path="/"):
+    """获取可用磁盘空间（GB）"""
+    try:
+        import shutil
+        total, used, free = shutil.disk_usage(path)
+        return free / (1024 * 1024 * 1024)  # 转换为GB
+    except Exception as e:
+        print(f"获取磁盘空间错误: {e}")
+        return 0
+
+def clean_docker_images():
+    """清理未使用的Docker镜像"""
+    try:
+        print("清理未使用的Docker镜像...")
+        # 首先尝试删除悬空镜像（dangling images）
+        subprocess.run("docker image prune -f", shell=True, check=True)
+        
+        # 如果空间仍然不足，可以考虑删除所有未使用的镜像
+        # subprocess.run("docker image prune -a -f", shell=True, check=True)
+        
+        # 获取清理后的可用空间
+        free_space = get_available_disk_space()
+        print(f"清理完成，当前可用磁盘空间: {free_space:.2f}GB")
+        return free_space
+    except subprocess.CalledProcessError as e:
+        print(f"清理Docker镜像错误: {e}")
+        return 0
+
 def pull_and_push_image(image, target):
     """拉取并推送镜像"""
     source_registry_url = image['source_registry_url']
@@ -170,6 +198,16 @@ def pull_and_push_image(image, target):
         source_image = f"{source_registry_url}/{orig_name_space}/{orig_image_name}"
     
     print(f"处理镜像: {source_image}, 平台: {platform}")
+    
+    # 检查磁盘空间
+    free_space = get_available_disk_space()
+    print(f"当前可用磁盘空间: {free_space:.2f}GB")
+    
+    # 如果可用空间小于5GB，尝试清理
+    if free_space < 5:
+        free_space = clean_docker_images()
+        if free_space < 5:
+            print(f"警告: 磁盘空间不足 ({free_space:.2f}GB)，可能影响镜像拉取")
     
     # 设置目标仓库信息
     if target == 'aliyun':
@@ -228,15 +266,27 @@ def pull_and_push_image(image, target):
             image_size, digest, platform
         )
         
-        # 移除对 update_push_status 的调用
-        
         print(f"镜像 {source_image} 成功推送到 {registry_image_name}，大小: {image_size:.2f}MB")
         
-        # 清理本地镜像
+        # 清理本地镜像，释放空间
+        print(f"清理本地镜像: {source_image} 和 {registry_image_name}")
         subprocess.run(f"docker rmi {source_image} {registry_image_name}", shell=True)
         
     except subprocess.CalledProcessError as e:
         print(f"处理镜像 {source_image} 时出错: {e}")
+        
+        # 如果是磁盘空间不足导致的错误，尝试清理并更新状态
+        if "no space left on device" in str(e).lower():
+            print("检测到磁盘空间不足，尝试清理...")
+            clean_docker_images()
+            # 不更新推送状态，下次仍会尝试该镜像
+            return
+        
+        # 其他错误，更新推送状态为失败（可选）
+        # update_push_status_failed(image['id'])
+    
+    # 更新推送状态为成功
+    update_push_status(image['id'])
 
 def main():
     parser = argparse.ArgumentParser(description='Docker镜像同步工具')
