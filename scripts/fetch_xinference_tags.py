@@ -62,15 +62,15 @@ def insert_image_to_db(registry_url, namespace, image_name, platform="linux/amd6
     
     try:
         # 首先检查pushed_images表中是否已存在相同的镜像（忽略push_status值）
-        cursor.execute("""
-        SELECT COUNT(*) FROM pushed_images 
-        WHERE source_registry_url = %s AND orig_name_space = %s AND orig_image_name = %s
-        """, (registry_url, namespace, image_name))
+        # cursor.execute("""
+        # SELECT COUNT(*) FROM pushed_images 
+        # WHERE source_registry_url = %s AND orig_name_space = %s AND orig_image_name = %s
+        # """, (registry_url, namespace, image_name))
         
-        count_pushed = cursor.fetchone()[0]
-        if count_pushed > 0:
-            print(f"镜像已在pushed_images表中存在: {registry_url}/{namespace}/{image_name}，跳过")
-            return False
+        # count_pushed = cursor.fetchone()[0]
+        # if count_pushed > 0:
+        #     print(f"镜像已在pushed_images表中存在: {registry_url}/{namespace}/{image_name}，跳过")
+        #     return False
         
         # 检查images_for_push表中是否已存在相同的镜像
         cursor.execute("""
