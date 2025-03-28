@@ -268,9 +268,9 @@ def pull_and_push_image(image, target):
         
         print(f"镜像 {source_image} 成功推送到 {registry_image_name}，大小: {image_size:.2f}MB")
         
-        # 清理本地镜像，释放空间
-        print(f"清理本地镜像: {source_image} 和 {registry_image_name}")
-        subprocess.run(f"docker rmi {source_image} {registry_image_name}", shell=True)
+        # # 清理本地镜像，释放空间
+        # print(f"清理本地镜像: {source_image} 和 {registry_image_name}")
+        # subprocess.run(f"docker rmi {source_image} {registry_image_name}", shell=True)
         
     except subprocess.CalledProcessError as e:
         print(f"处理镜像 {source_image} 时出错: {e}")
