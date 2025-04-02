@@ -24,8 +24,8 @@ jobs:
       - name: Add image to database
         id: add-image
         run: |
-          IMAGES="${{ toJSON(github.event.client_payload.image || github.event.client_payload.images) }}"
-          python scripts/add_webhook_image.py "$IMAGES"
+          echo '${{ toJSON(github.event.client_payload.image || github.event.client_payload.images) }}' > images.json
+          python scripts/add_webhook_image.py images.json
         env:
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
           MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
