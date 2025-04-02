@@ -104,11 +104,16 @@ def process_images(images_data):
     """处理多个镜像"""
     has_new_images = False
     
+    print(f"接收到的原始数据: {images_data}")
+    
     # 如果输入是字符串，尝试解析为JSON
     if isinstance(images_data, str):
         try:
+            # 尝试直接解析
             images = json.loads(images_data)
-        except json.JSONDecodeError:
+            print(f"JSON解析后的数据: {images}")
+        except json.JSONDecodeError as e:
+            print(f"JSON解析错误: {e}")
             # 如果不是有效的JSON，则视为单个镜像
             images = [images_data]
     else:
@@ -118,8 +123,14 @@ def process_images(images_data):
     if not isinstance(images, list):
         images = [images]
     
+    print(f"最终处理的镜像列表: {images}")
+    
     # 处理每个镜像
     for image in images:
+        if image is None:
+            print("警告: 发现空镜像，跳过")
+            continue
+            
         print(f"处理镜像: {image}")
         registry_url, namespace, image_name = parse_image_info(image)
         if insert_image_to_db(registry_url, namespace, image_name):
@@ -131,23 +142,31 @@ def main():
     # 检查命令行参数
     if len(sys.argv) < 2:
         print("错误: 缺少镜像参数")
-        print("用法: python add_webhook_image.py <image_json>")
+        print("用法: python add_webhook_image.py <image_json_file>")
         sys.exit(1)
     
-    # 获取镜像参数
-    images_data = sys.argv[1]
+    # 获取镜像参数文件
+    image_file = sys.argv[1]
     
-    # 处理镜像
-    has_new_images = process_images(images_data)
-    
-    # 设置GitHub Actions输出变量
-    with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
-        f.write(f"has_new_images={str(has_new_images).lower()}\n")
-    
-    if has_new_images:
-        print("发现新镜像，将触发Docker Image Sync工作流")
-    else:
-        print("未发现新镜像或镜像已存在")
+    try:
+        # 从文件读取JSON数据
+        with open(image_file, 'r') as f:
+            images_data = f.read().strip()
+        
+        # 处理镜像
+        has_new_images = process_images(images_data)
+        
+        # 设置GitHub Actions输出变量
+        with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+            f.write(f"has_new_images={str(has_new_images).lower()}\n")
+        
+        if has_new_images:
+            print("发现新镜像，将触发Docker Image Sync工作流")
+        else:
+            print("未发现新镜像或镜像已存在")
+    except Exception as e:
+        print(f"处理镜像时发生错误: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
