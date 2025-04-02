@@ -24,7 +24,7 @@ jobs:
       - name: Add image to database
         id: add-image
         run: |
-          python scripts/add_webhook_image.py "${{ github.event.client_payload.image }}"
+          python scripts/add_webhook_image.py "${{ toJSON(github.event.client_payload.images) }}"
         env:
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
           MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
@@ -38,4 +38,4 @@ jobs:
         with:
           token: ${{ secrets.GIT_TOKEN }}
           event-type: sync-images
-          client-payload: '{"message": "New image added via webhook"}'
+          client-payload: '{"message": "New images added via webhook"}'
