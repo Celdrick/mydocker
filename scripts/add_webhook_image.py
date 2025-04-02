@@ -3,6 +3,7 @@
 
 import os
 import sys
+import json
 import mysql.connector
 from mysql.connector import Error
 
@@ -99,22 +100,45 @@ def insert_image_to_db(registry_url, namespace, image_name, platform="linux/amd6
             cursor.close()
             connection.close()
 
+def process_images(images_data):
+    """处理多个镜像"""
+    has_new_images = False
+    
+    # 如果输入是字符串，尝试解析为JSON
+    if isinstance(images_data, str):
+        try:
+            images = json.loads(images_data)
+        except json.JSONDecodeError:
+            # 如果不是有效的JSON，则视为单个镜像
+            images = [images_data]
+    else:
+        images = images_data
+    
+    # 确保images是列表
+    if not isinstance(images, list):
+        images = [images]
+    
+    # 处理每个镜像
+    for image in images:
+        print(f"处理镜像: {image}")
+        registry_url, namespace, image_name = parse_image_info(image)
+        if insert_image_to_db(registry_url, namespace, image_name):
+            has_new_images = True
+    
+    return has_new_images
+
 def main():
     # 检查命令行参数
     if len(sys.argv) < 2:
         print("错误: 缺少镜像参数")
-        print("用法: python add_webhook_image.py <image>")
+        print("用法: python add_webhook_image.py <image_json>")
         sys.exit(1)
     
     # 获取镜像参数
-    image = sys.argv[1]
-    print(f"处理镜像: {image}")
+    images_data = sys.argv[1]
     
-    # 解析镜像信息
-    registry_url, namespace, image_name = parse_image_info(image)
-    
-    # 将镜像添加到数据库
-    has_new_images = insert_image_to_db(registry_url, namespace, image_name)
+    # 处理镜像
+    has_new_images = process_images(images_data)
     
     # 设置GitHub Actions输出变量
     with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
