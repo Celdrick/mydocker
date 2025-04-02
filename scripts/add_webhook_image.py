@@ -3,7 +3,6 @@
 
 import os
 import sys
-import re
 import mysql.connector
 from mysql.connector import Error
 
