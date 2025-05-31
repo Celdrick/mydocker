@@ -59,7 +59,7 @@ RUN git clone ${AITER_REPO} \
     && cd aiter \
     && git checkout ${AITER_COMMIT} \
     && git submodule update --init --recursive \
-    && PREBUILD_KERNELS=1 GPU_ARCHS=gfx906 python3 setup.py develop
+    && PREBUILD_KERNELS=1 GPU_ARCHS=gfx942 python3 setup.py develop
 
 # Copy config files to support MI300X in virtualized environments (MI300X_VF).  Symlinks will not be created in image build.
 RUN find /sgl-workspace/sglang/python/sglang/srt/layers/quantization/configs/ \
